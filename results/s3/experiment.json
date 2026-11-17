@@ -1,0 +1,78 @@
+{
+  "backend": "s3",
+  "database": "dr_s3trial",
+  "snapshot": "2026-11-16T21:02:26Z",
+  "settings": {
+    "docs": 262144,
+    "payload": 4096,
+    "seed": 42,
+    "rate": 50,
+    "duration": 15,
+    "weights": [
+      25,
+      60,
+      15
+    ],
+    "cycles": 2
+  },
+  "base": {
+    "count": 262144,
+    "bson_bytes": 1088972550,
+    "sha256": "c94e2b9d91992b31965757eb3e156e781d47b4fa501b270a40c6fa9a8baf4dd5",
+    "indexes": [
+      "_id_",
+      "project_1"
+    ]
+  },
+  "snapshot_seconds": 35.13,
+  "snapshot_bytes": 2178650503,
+  "cycles": [
+    {
+      "operations": {
+        "insert": 173,
+        "update": 459,
+        "delete": 118
+      },
+      "workload_seconds": 15.8,
+      "oplog_bson_bytes": 2838506,
+      "archive_new_bytes": 2672310,
+      "archive_new_chunks": 1,
+      "target_utc": "2026-11-16T21:03:17",
+      "coverage_end_utc": "2026-11-16T21:04:31",
+      "coverage_wait_seconds": 70.89,
+      "expected": {
+        "count": 262199,
+        "bson_bytes": 1089185756,
+        "sha256": "af34e2bbad9850304553b787c85c60bf9adbbd2002d4c4b83b32018fb6eb1875",
+        "indexes": [
+          "_id_",
+          "project_1"
+        ]
+      }
+    },
+    {
+      "operations": {
+        "insert": 211,
+        "update": 431,
+        "delete": 108
+      },
+      "workload_seconds": 15.48,
+      "oplog_bson_bytes": 2882851,
+      "archive_new_bytes": 2708060,
+      "archive_new_chunks": 1,
+      "target_utc": "2026-11-16T21:04:50",
+      "coverage_end_utc": "2026-11-16T21:05:31",
+      "coverage_wait_seconds": 35.65,
+      "expected": {
+        "count": 262302,
+        "bson_bytes": 1089623629,
+        "sha256": "5e4713894b21038007922ff306acd82faabc9a228505017029c1d1fb44f91cf6",
+        "indexes": [
+          "_id_",
+          "project_1"
+        ]
+      }
+    }
+  ],
+  "excluded_write_coverage_end_utc": "2026-11-16T21:06:31"
+}

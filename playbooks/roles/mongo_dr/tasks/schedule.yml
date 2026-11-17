@@ -1,0 +1,32 @@
+---
+- name: Install backup and retention systemd units
+  ansible.builtin.template:
+    src: "{{ item }}.j2"
+    dest: "/etc/systemd/system/mongo-dr-backup.{{ item }}"
+    mode: "0644"
+  loop:
+    - service
+    - timer
+
+- name: Enable backup timer
+  ansible.builtin.systemd_service:
+    name: mongo-dr-backup.timer
+    daemon_reload: true
+    enabled: true
+    state: started
+
+- name: Install backup monitoring units
+  ansible.builtin.template:
+    src: "health.{{ item }}.j2"
+    dest: "/etc/systemd/system/mongo-dr-health.{{ item }}"
+    mode: "0644"
+  loop:
+    - service
+    - timer
+
+- name: Enable backup monitoring timer
+  ansible.builtin.systemd_service:
+    name: mongo-dr-health.timer
+    daemon_reload: true
+    enabled: true
+    state: started

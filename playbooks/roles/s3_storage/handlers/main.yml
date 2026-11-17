@@ -1,0 +1,6 @@
+---
+- name: Restart S3 gateway
+  ansible.builtin.systemd_service:
+    name: mongo-dr-s3
+    daemon_reload: true
+    state: restarted

@@ -1,0 +1,9 @@
+[Unit]
+Description=Check MongoDB backup recovery-point age and S3 connectivity
+
+[Service]
+Type=oneshot
+User=mongo-dr
+EnvironmentFile={{ dr_home }}/pbm.env
+ExecStart={{ dr_home }}/health.py --max-lag {{ dr_rpo_seconds }}
+TimeoutStartSec=30

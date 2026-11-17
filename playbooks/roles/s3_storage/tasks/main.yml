@@ -1,0 +1,80 @@
+---
+- name: Validate the host and S3 secrets
+  ansible.builtin.assert:
+    that:
+      - ansible_architecture == 'x86_64'
+      - dr_s3_root_access != dr_s3_access
+      - dr_s3_root_secret is match('^[0-9a-f]{64}$')
+      - dr_s3_secret is match('^[0-9a-f]{64}$')
+  no_log: true
+
+- name: Create dedicated S3 service account
+  ansible.builtin.user:
+    name: mongo-dr-s3
+    system: true
+    create_home: false
+    shell: /usr/sbin/nologin
+
+- name: Create gateway directories
+  ansible.builtin.file:
+    path: "{{ dr_s3_home }}/{{ item }}"
+    owner: mongo-dr-s3
+    group: mongo-dr-s3
+    state: directory
+    mode: "0700"
+  loop: [objects, iam]
+
+- name: Create release installation directory
+  ansible.builtin.file:
+    path: "/opt/mongo-dr-s3/{{ dr_s3_version }}"
+    state: directory
+    owner: root
+    mode: "0755"
+
+- name: Download verified Versity release
+  ansible.builtin.get_url:
+    url: "https://github.com/versity/versitygw/releases/download/{{ dr_s3_version }}/versitygw_{{ dr_s3_version }}_Linux_x86_64.tar.gz"
+    dest: "/opt/mongo-dr-s3/{{ dr_s3_version }}/release.tar.gz"
+    checksum: "sha256:{{ dr_s3_sha256 }}"
+    mode: "0644"
+
+- name: Extract Versity release
+  ansible.builtin.unarchive:
+    src: "/opt/mongo-dr-s3/{{ dr_s3_version }}/release.tar.gz"
+    dest: "/opt/mongo-dr-s3/{{ dr_s3_version }}"
+    remote_src: true
+    extra_opts: [--strip-components=1]
+    creates: "/opt/mongo-dr-s3/{{ dr_s3_version }}/versitygw"
+
+- name: Install gateway service settings
+  ansible.builtin.template:
+    src: "{{ item.src }}.j2"
+    dest: "{{ item.dest }}"
+    owner: root
+    mode: "{{ item.mode }}"
+  loop:
+    - {src: gateway.env, dest: /etc/mongo-dr-s3.env, mode: "0600"}
+    - {src: gateway.service, dest: /etc/systemd/system/mongo-dr-s3.service, mode: "0644"}
+  no_log: true
+  notify: Restart S3 gateway
+
+- name: Apply gateway settings
+  ansible.builtin.meta: flush_handlers
+
+- name: Enable the gateway
+  ansible.builtin.systemd_service:
+    name: mongo-dr-s3
+    state: started
+    enabled: true
+    daemon_reload: true
+
+- name: Wait for the S3 WireGuard listener
+  ansible.builtin.wait_for:
+    host: "{{ wg_ip }}"
+    port: "{{ dr_s3_port }}"
+    timeout: 30
+  when: not ansible_check_mode
+
+- name: Configure the backup bucket and identity
+  ansible.builtin.include_tasks: bucket.yml
+  when: not ansible_check_mode

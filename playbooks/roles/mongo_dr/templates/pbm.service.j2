@@ -1,0 +1,14 @@
+[Unit]
+Description=PBM agent for MongoDB DR laboratory
+After=mongo-dr.service
+Wants=mongo-dr.service
+
+[Service]
+User=mongo-dr
+EnvironmentFile={{ dr_home }}/pbm.env
+ExecStart=/usr/bin/pbm-agent
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

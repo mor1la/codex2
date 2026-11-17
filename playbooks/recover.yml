@@ -1,0 +1,73 @@
+---
+- name: Restore a PITR checkpoint on the isolated recovery host
+  hosts: recovery
+  become: true
+  vars:
+    recovery_point: ""
+    recovery_database: ""
+    recovery_stop_source: false
+    recovery_reinitialize: false
+    recovery_list_only: false
+    recovery_manifest: "{{ playbook_dir }}/../artifacts/experiment-s3.json"
+  tasks:
+    - name: Confirm isolated target and explicit restore authorization
+      ansible.builtin.assert:
+        that:
+          - recovery_confirm | default('') == inventory_hostname
+          - inventory_hostname not in groups.source
+          - (recovery_point | length == 0) or (recovery_database is match('^dr_[a-z0-9_]{1,40}$'))
+          - (recovery_point | length == 0) or (recovery_point is match('^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}$'))
+        fail_msg: "Set recovery_confirm to the recovery inventory hostname and provide recovery_database for an explicit PITR target."
+
+    - name: Load expected state for a drill
+      ansible.builtin.set_fact:
+        dr_manifest: "{{ lookup('ansible.builtin.file', recovery_manifest) | from_json }}"
+      when: recovery_point | length == 0 and not (recovery_list_only | bool)
+
+    - name: Prepare a fresh recovery database when requested
+      ansible.builtin.include_tasks: tasks/recovery/fresh-recovery.yml
+      when: recovery_reinitialize | bool and not (recovery_list_only | bool) and not ansible_check_mode
+
+    - name: Exercise recovery with optional source outage
+      when: not ansible_check_mode
+      block:
+        - name: Stop laboratory backup scheduling and database for outage simulation
+          ansible.builtin.systemd_service:
+            name: "{{ item }}"
+            state: stopped
+          loop:
+            - mongo-dr-backup.timer
+            - mongo-dr-pbm.service
+            - mongo-dr.service
+          delegate_to: "{{ groups.source[0] }}"
+          when: recovery_stop_source | bool
+
+        - name: Verify source database port is closed
+          ansible.builtin.wait_for:
+            host: 127.0.0.1
+            port: "{{ dr_port }}"
+            state: stopped
+            timeout: 10
+          delegate_to: "{{ groups.source[0] }}"
+          when: recovery_stop_source | bool
+
+        - name: Record the source outage timestamp in UTC
+          ansible.builtin.command: date -u +%Y-%m-%dT%H:%M:%SZ
+          register: dr_outage
+          changed_when: false
+          delegate_to: "{{ groups.source[0] }}"
+          when: recovery_stop_source | bool
+
+        - name: Restore and verify from archive
+          ansible.builtin.include_tasks: tasks/recovery/restore.yml
+      always:
+        - name: Restart laboratory source services after simulation
+          ansible.builtin.systemd_service:
+            name: "{{ item }}"
+            state: started
+          loop:
+            - mongo-dr.service
+            - mongo-dr-pbm.service
+            - mongo-dr-backup.timer
+          delegate_to: "{{ groups.source[0] }}"
+          when: recovery_stop_source | bool

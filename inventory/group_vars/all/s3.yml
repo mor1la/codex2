@@ -1,0 +1,11 @@
+---
+dr_s3_port: 19000
+dr_s3_endpoint: "http://{{ hostvars[groups.storage[0]].wg_ip }}:{{ dr_s3_port }}"
+dr_s3_bucket: mongo-dr
+dr_s3_prefix: pbm
+dr_s3_region: us-east-1
+dr_s3_root_access: mongo-dr-admin
+dr_s3_access: mongo-dr-pbm
+dr_s3_home: /srv/mongo-dr-s3
+dr_s3_version: v1.11.0
+dr_s3_sha256: 1f075c9dc92fef232f5b3c7465711ddc5e1b062b2b6df4a3bd246a4be5b35b52

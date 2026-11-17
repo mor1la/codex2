@@ -1,0 +1,56 @@
+---
+- name: Create seed snapshot and archive multiple change windows
+  hosts: source
+  become: true
+  vars:
+    experiment_db: dr_demo
+    experiment_docs: 100000
+    experiment_payload: 4096
+    experiment_seed: 42
+    experiment_rate: 50
+    experiment_duration: 15
+    experiment_cycles: 2
+    experiment_weights: [25, 60, 15]
+  tasks:
+    - name: Open experimental backup window
+      ansible.builtin.systemd_service:
+        name: mongo-dr-backup.timer
+        state: stopped
+      when: not ansible_check_mode
+
+    - name: Record results with scheduled backups paused
+      when: not ansible_check_mode
+      block:
+        - name: Wait for an already running scheduled snapshot
+          ansible.builtin.command:
+            argv: [systemctl, show, -p, ActiveState, --value, mongo-dr-backup.service]
+          register: dr_scheduled_backup
+          until: dr_scheduled_backup.stdout not in ['active', 'activating', 'deactivating']
+          retries: 60
+          delay: 10
+          changed_when: false
+
+        - name: Generate synthetic dataset and capture PITR checkpoints
+          ansible.builtin.command:
+            argv: >-
+              {{ [dr_home + '/drctl', dr_home + '/experiment.py', 'run',
+                  '--database', experiment_db,
+                  '--docs', experiment_docs | string, '--seed', experiment_seed | string,
+                  '--payload', experiment_payload | string, '--rate', experiment_rate | string,
+                  '--duration', experiment_duration | string, '--cycles', experiment_cycles | string,
+                  '--coverage-timeout', (dr_slice_minutes | int * 180 + 60) | string,
+                  '--report', dr_home + '/experiment-s3.json', '--weights']
+                 + (experiment_weights | map('string') | list) }}
+          async: 14400
+          poll: 10
+
+        - name: Download experiment manifest
+          ansible.builtin.fetch:
+            src: "{{ dr_home }}/experiment-s3.json"
+            dest: "{{ playbook_dir }}/../artifacts/experiment-s3.json"
+            flat: true
+      always:
+        - name: Resume snapshot schedule
+          ansible.builtin.systemd_service:
+            name: mongo-dr-backup.timer
+            state: started

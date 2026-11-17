@@ -1,0 +1,35 @@
+---
+- name: Configure the S3 identity and bucket as gateway administrator
+  vars:
+    dr_gateway_admin: ["/opt/mongo-dr-s3/{{ dr_s3_version }}/versitygw", admin]
+  environment:
+    ADMIN_ACCESS_KEY_ID: "{{ dr_s3_root_access }}"
+    ADMIN_SECRET_ACCESS_KEY: "{{ dr_s3_root_secret }}"
+    ADMIN_ENDPOINT_URL: "{{ dr_s3_endpoint }}"
+    ADMIN_REGION: "{{ dr_s3_region }}"
+  no_log: true
+  block:
+    - name: Read existing S3 identities
+      ansible.builtin.command:
+        argv: "{{ dr_gateway_admin + ['list-users'] }}"
+      register: dr_gateway_users
+      changed_when: false
+
+    - name: Create the PBM identity
+      ansible.builtin.command:
+        argv: >-
+          {{ dr_gateway_admin + ['create-user', '--access', dr_s3_access,
+                                 '--secret', dr_s3_secret, '--role', 'user'] }}
+      when: dr_s3_access not in dr_gateway_users.stdout
+
+    - name: Check for the bucket on the dedicated object volume
+      ansible.builtin.stat:
+        path: "{{ dr_s3_home }}/objects/{{ dr_s3_bucket }}"
+      register: dr_s3_bucket_dir
+
+    - name: Create the bucket owned by the PBM identity
+      ansible.builtin.command:
+        argv: >-
+          {{ dr_gateway_admin + ['create-bucket', '--bucket', dr_s3_bucket,
+                                 '--owner', dr_s3_access] }}
+      when: not dr_s3_bucket_dir.stat.exists

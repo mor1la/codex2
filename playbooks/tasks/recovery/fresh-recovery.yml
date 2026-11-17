@@ -1,0 +1,47 @@
+---
+- name: Stop the recovery agent and database
+  ansible.builtin.systemd_service:
+    name: "{{ item }}"
+    state: stopped
+  loop:
+    - mongo-dr-pbm.service
+    - mongo-dr.service
+
+- name: Allocate a unique directory for the previous recovery database
+  ansible.builtin.tempfile:
+    state: directory
+    path: "{{ dr_home }}"
+    prefix: data-before-
+  register: dr_previous_data
+
+- name: Preserve the previous recovery database
+  ansible.builtin.command:
+    argv:
+      - mv
+      - --no-target-directory
+      - "{{ dr_home }}/data"
+      - "{{ dr_previous_data.path }}/data"
+
+- name: Create an empty recovery database directory
+  ansible.builtin.file:
+    path: "{{ dr_home }}/data"
+    owner: mongo-dr
+    group: mongo-dr
+    mode: "0700"
+    state: directory
+
+- name: Start the clean recovery database
+  ansible.builtin.systemd_service:
+    name: mongo-dr.service
+    state: started
+
+- name: Initialize the clean replica set
+  ansible.builtin.command: "{{ dr_home }}/drctl {{ dr_home }}/bootstrap.py {{ dr_replica }} {{ dr_port }}"
+
+- name: Start the recovery agent
+  ansible.builtin.systemd_service:
+    name: mongo-dr-pbm.service
+    state: started
+
+- name: Load storage configuration with PITR writes disabled
+  ansible.builtin.command: "{{ dr_home }}/drctl pbm config --file {{ dr_home }}/pbm.yml"

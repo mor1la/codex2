@@ -1,0 +1,13 @@
+---
+- name: Install Percona packages
+  ansible.builtin.import_tasks: packages.yml
+
+- name: Configure the isolated database instance
+  ansible.builtin.import_tasks: instance.yml
+
+- name: Configure Percona Backup for MongoDB
+  ansible.builtin.import_tasks: pbm.yml
+
+- name: Enable scheduled backups on the source
+  ansible.builtin.import_tasks: schedule.yml
+  when: "'source' in group_names"

@@ -1,0 +1,10 @@
+---
+dr_home: /srv/mongo-dr
+dr_uid: 30087
+dr_port: 27117
+dr_replica: drlab
+dr_retention_days: 7
+dr_slice_minutes: 1
+dr_pbm_package: percona-backup-mongodb=2.17.0-1.noble
+dr_mongo_package: percona-server-mongodb-server=8.0.38-16.noble
+dr_rpo_seconds: 180

@@ -3,22 +3,16 @@ all:
   vars:
     ansible_user: root
   children:
+    mongodb:
+      hosts:
+        mongo-01:
+          ansible_host: 192.0.2.11
+        mongo-02:
+          ansible_host: 192.0.2.12
     storage:
       hosts:
         archive:
           ansible_host: 192.0.2.10
-          wg_ip: 10.23.0.10
-    source:
-      hosts:
-        mongo-source:
-          ansible_host: 192.0.2.11
-          wg_ip: 10.23.0.11
-    recovery:
-      hosts:
-        mongo-recovery:
-          ansible_host: 192.0.2.12
-          wg_ip: 10.23.0.12
-    mongo:
+    pbm_agents:
       children:
-        source:
-        recovery:
+        mongodb: {}

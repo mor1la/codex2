@@ -1,0 +1,11 @@
+---
+- name: Create a full logical backup and apply retention
+  ansible.builtin.command:
+    argv:
+      - "{{ pbm_home }}/drctl"
+      - "{{ pbm_home }}/backup.py"
+      - --retention-days
+      - "{{ pbm_retention_days | string }}"
+  async: 14400
+  poll: 10
+  when: not ansible_check_mode

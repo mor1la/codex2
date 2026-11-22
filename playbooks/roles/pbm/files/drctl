@@ -1,0 +1,15 @@
+#!/usr/bin/python3
+"""Execute a command with the managed CLI URI, without evaluating shell code."""
+import json
+import os
+import sys
+from pathlib import Path
+
+if len(sys.argv) < 2:
+    raise SystemExit("Usage: drctl COMMAND [ARGUMENT ...]")
+line = (Path(__file__).resolve().parent / 'pbm.env').read_text().strip()
+key, value = line.split('=', 1)
+if key != 'PBM_MONGODB_URI':
+    raise SystemExit('Unexpected environment file format')
+env = dict(os.environ, PBM_MONGODB_URI=json.loads(value))
+os.execvpe(sys.argv[1], sys.argv[1:], env)

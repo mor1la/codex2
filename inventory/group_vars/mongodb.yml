@@ -1,0 +1,11 @@
+---
+# Both instances use the same MongoDB role and configuration.
+mongodb_home: /srv/mongo-dr
+mongodb_service: mongo-dr
+mongodb_user: mongo-dr
+mongodb_uid: 30087
+mongodb_port: 27117
+mongodb_replica: drlab
+mongodb_admin_user: dradmin
+mongodb_admin_password: "{{ mongo_dr_password }}"
+mongodb_key: "{{ mongo_dr_key }}"

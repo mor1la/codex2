@@ -1,0 +1,89 @@
+---
+- name: Validate the restore destination before touching storage or data
+  ansible.builtin.import_tasks: validate_restore.yml
+
+- name: Record preparation stage
+  ansible.builtin.set_fact:
+    pbm_restore_stage: preparation
+
+- name: Prepare destination using caller-provided tasks
+  ansible.builtin.include_tasks: "{{ pbm_restore_prepare_tasks }}"
+  when: pbm_restore_prepare_tasks | length > 0 and not (pbm_restore_list_only | bool)
+
+- name: Record configuration stage
+  ansible.builtin.set_fact:
+    pbm_restore_stage: configuration
+
+- name: Select the requested archive on the destination
+  ansible.builtin.import_tasks: storage.yml
+
+- name: Apply the requested archive with PITR disabled
+  ansible.builtin.import_tasks: configure.yml
+
+- name: Record catalogue import stage
+  ansible.builtin.set_fact:
+    pbm_restore_stage: resync
+
+- name: Import backup catalogue from S3
+  ansible.builtin.command: "{{ pbm_home }}/drctl pbm config --force-resync --wait"
+  register: pbm_restore_resync
+  until: pbm_restore_resync.rc == 0 or 'another operation in progress, Resync storage/' not in pbm_restore_resync.stderr
+  retries: 60
+  delay: 5
+
+- name: Read recovery catalogue
+  ansible.builtin.command: "{{ pbm_home }}/drctl pbm list"
+  register: pbm_restore_catalogue
+  changed_when: false
+  when: pbm_restore_list_only | bool
+
+- name: Display recovery catalogue
+  ansible.builtin.debug:
+    var: pbm_restore_catalogue.stdout_lines
+  when: pbm_restore_list_only | bool
+
+- name: Record database restore stage
+  ansible.builtin.set_fact:
+    pbm_restore_stage: restore
+    pbm_restore_database_success: false
+  when: not (pbm_restore_list_only | bool)
+
+- name: Restore selected application namespace
+  ansible.builtin.command:
+    argv:
+      - "{{ pbm_home }}/drctl"
+      - pbm
+      - restore
+      - --yes
+      - --wait
+      - --ns
+      - "{{ pbm_restore_namespace }}"
+      - --time
+      - "{{ pbm_restore_point }}"
+  async: 14400
+  poll: 5
+  register: pbm_restore_result
+  when: not (pbm_restore_list_only | bool)
+
+- name: Record successful PBM restore
+  ansible.builtin.set_fact:
+    pbm_restore_database_success: true
+  when: not (pbm_restore_list_only | bool)
+
+- name: Verify restored application data using caller-provided tasks
+  when: pbm_restore_verify_tasks | length > 0 and not (pbm_restore_list_only | bool)
+  block:
+    - name: Record verification stage
+      ansible.builtin.set_fact:
+        pbm_restore_stage: verification
+
+    - name: Execute application verification
+      ansible.builtin.include_tasks: "{{ pbm_restore_verify_tasks }}"
+
+    - name: Record successful data verification
+      ansible.builtin.set_fact:
+        pbm_restore_verification_status: passed
+
+- name: Record successful restore operation
+  ansible.builtin.set_fact:
+    pbm_restore_success: true

@@ -1,0 +1,84 @@
+---
+- name: Create MongoDB group
+  ansible.builtin.group:
+    name: "{{ mongodb_user }}"
+    gid: "{{ mongodb_uid if mongodb_uid is not none else omit }}"
+    system: true
+
+- name: Create MongoDB service user
+  ansible.builtin.user:
+    name: "{{ mongodb_user }}"
+    group: "{{ mongodb_user }}"
+    uid: "{{ mongodb_uid if mongodb_uid is not none else omit }}"
+    system: true
+    create_home: false
+    shell: /usr/sbin/nologin
+
+- name: Create MongoDB directories
+  ansible.builtin.file:
+    path: "{{ item.path }}"
+    owner: "{{ item.owner }}"
+    group: "{{ mongodb_user }}"
+    state: directory
+    mode: "{{ item.mode }}"
+  loop:
+    - {path: "{{ mongodb_home }}", owner: root, mode: "0755"}
+    - {path: "{{ mongodb_home }}/data", owner: "{{ mongodb_user }}", mode: "0700"}
+
+- name: Install database configuration and systemd units
+  ansible.builtin.template:
+    src: "{{ item.src }}.j2"
+    dest: "{{ item.dest }}"
+    owner: root
+    group: "{{ item.group | default('root') }}"
+    mode: "{{ item.mode | default('0644') }}"
+  notify: Restart MongoDB
+  loop:
+    - {src: mongod.yml, dest: "{{ mongodb_home }}/mongod.yml", group: "{{ mongodb_user }}", mode: "0640"}
+    - {src: mongod.service, dest: "/etc/systemd/system/{{ mongodb_service }}.service"}
+
+- name: Install replica-set key
+  ansible.builtin.copy:
+    dest: "{{ mongodb_home }}/key"
+    content: "{{ mongodb_key }}\n"
+    owner: "{{ mongodb_user }}"
+    group: "{{ mongodb_user }}"
+    mode: "0400"
+  no_log: true
+  notify: Restart MongoDB
+
+- name: Install replica set bootstrap program
+  ansible.builtin.copy:
+    src: "{{ item }}"
+    dest: "{{ mongodb_home }}/{{ item }}"
+    mode: "0755"
+  loop:
+    - bootstrap.py
+
+- name: Start MongoDB instance
+  ansible.builtin.systemd_service:
+    name: "{{ mongodb_service }}"
+    state: started
+    enabled: true
+    daemon_reload: true
+
+- name: Initialize replica set and first administrator without resetting data
+  ansible.builtin.command:
+    argv:
+      - "{{ mongodb_home }}/bootstrap.py"
+      - "{{ mongodb_replica }}"
+      - "{{ mongodb_port | string }}"
+      - "{{ mongodb_admin_user }}"
+  environment:
+    MONGODB_URI: "mongodb://{{ mongodb_admin_user | urlencode | replace('/', '%2F') }}:{{ mongodb_admin_password | urlencode | replace('/', '%2F') }}@127.0.0.1:{{ mongodb_port }}/?authSource=admin"
+  no_log: true
+  register: mongodb_bootstrap
+  changed_when: "'initialized' in mongodb_bootstrap.stdout"
+  when: not ansible_check_mode
+
+- name: Mark the managed instance for explicit laboratory reset scenarios
+  ansible.builtin.copy:
+    dest: "{{ mongodb_home }}/.ansible-mongodb"
+    content: "Managed by the mongodb Ansible role.\n"
+    owner: root
+    mode: "0644"

@@ -1,0 +1,29 @@
+---
+- name: Require the supported distribution for automatic package installation
+  ansible.builtin.assert:
+    that:
+      - ansible_distribution == 'Ubuntu'
+      - ansible_distribution_release == 'noble'
+      - ansible_architecture == 'x86_64'
+    fail_msg: Automatic PBM packages target Ubuntu 24.04 amd64. Install compatible dependencies yourself and set pbm_install_packages=false on other systems.
+
+- name: Install Percona repository manager
+  ansible.builtin.apt:
+    deb: https://repo.percona.com/apt/percona-release_latest.generic_all.deb
+
+- name: Enable PBM repository
+  ansible.builtin.command: percona-release enable pbm release
+  args:
+    creates: /etc/apt/sources.list.d/percona-pbm-release.list
+  register: pbm_repository
+
+- name: Install pinned PBM and metric dependencies
+  ansible.builtin.apt:
+    name:
+      - "{{ pbm_package }}"
+      - python3-boto3
+      - python3-yaml
+      - python3-pymongo
+    update_cache: true
+    cache_valid_time: "{{ 0 if pbm_repository.changed else 3600 }}"
+    policy_rc_d: 101

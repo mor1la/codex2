@@ -1,0 +1,95 @@
+---
+- name: Validate restore selection on the Ansible controller
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  any_errors_fatal: true
+  tasks:
+    - name: Require one known destination and archive profile
+      ansible.builtin.assert:
+        that:
+          - restore_target | default('') in groups.get('pbm_agents', [])
+          - restore_archive | default('') in backup_archives | default({})
+          - restore_confirm | default('') == restore_target | default('')
+        fail_msg: Set restore_target, restore_archive and restore_confirm to the explicit destination hostname.
+
+    - name: Resolve destination host
+      ansible.builtin.set_fact:
+        restore_selected_target: "{{ restore_target }}"
+
+- name: Restore the selected archive on the selected MongoDB instance
+  hosts: "{{ hostvars['localhost'].restore_selected_target | default('restore_target_required') }}"
+  become: true
+  gather_facts: false
+  vars:
+    restore_database: ""
+    restore_time: ""
+    restore_manifest: ""
+    restore_reinitialize: false
+    restore_list_only: false
+    restore_stop_source: false
+    restore_source: "{{ experiment_host | default('') }}"
+    restore_previous_prefix: data-before-
+    restore_expected: {}
+    restore_report_path: "{{ playbook_dir }}/../artifacts/restore.json"
+  tasks:
+    - name: Require a point and database or a verification manifest
+      ansible.builtin.assert:
+        that:
+          - restore_list_only | bool or restore_manifest | length > 0 or (restore_database | length > 0 and restore_time | length > 0)
+          - not (restore_stop_source | bool) or restore_source in groups.get('pbm_agents', [])
+          - not (restore_stop_source | bool) or restore_source != inventory_hostname
+          - restore_previous_prefix in ['data-before-', 'drill-previous-']
+
+    - name: Read expected dataset checkpoint from the controller
+      ansible.builtin.set_fact:
+        restore_expected: "{{ lookup('ansible.builtin.file', restore_manifest) | from_json }}"
+      when: restore_manifest | length > 0
+
+    - name: Validate the experimental verification manifest
+      ansible.builtin.assert:
+        that:
+          - restore_expected is mapping
+          - restore_expected.get('database', '') | length > 0
+          - restore_expected.get('cycles', []) | length > 0
+      when: restore_manifest | length > 0
+
+    - name: Resolve explicit operation parameters
+      ansible.builtin.set_fact:
+        restore_job_database: "{{ restore_database or restore_expected.get('database', '') }}"
+        restore_job_time: "{{ (restore_time or ((restore_expected.cycles | last).target_utc if restore_expected.get('cycles') else '')) | regex_replace('Z$', '') }}"
+        restore_job_archive: "{{ backup_archives[restore_archive] }}"
+        restore_source_touched: false
+        restore_outage: {}
+      no_log: true
+
+    - name: Keep verification tied to the exact recorded checkpoint
+      ansible.builtin.assert:
+        that:
+          - restore_job_database == restore_expected.database
+          - restore_job_time == (restore_expected.cycles | last).target_utc
+      when: restore_manifest | length > 0
+
+    - name: Execute the explicitly selected recovery operation
+      vars:
+        pbm_restore_confirm: "{{ restore_confirm }}"
+        pbm_restore_point: "{{ restore_job_time }}"
+        pbm_restore_namespace: "{{ restore_job_database + '.*' if restore_job_database else '' }}"
+        pbm_restore_list_only: "{{ restore_list_only }}"
+        pbm_s3_endpoint: "{{ restore_job_archive.endpoint }}"
+        pbm_s3_region: "{{ restore_job_archive.region }}"
+        pbm_s3_bucket: "{{ restore_job_archive.bucket }}"
+        pbm_s3_prefix: "{{ restore_job_archive.prefix }}"
+        pbm_s3_access: "{{ restore_job_archive.access_key }}"
+        pbm_s3_secret: "{{ restore_job_archive.secret_key }}"
+        pbm_restore_report_path: "{{ restore_report_path }}"
+        pbm_restore_report_metadata:
+          archive: "{{ restore_archive }}"
+          source_stopped_for_drill: "{{ restore_source_touched | bool }}"
+          source_outage_utc: "{{ restore_outage.get('stdout') }}"
+        pbm_restore_prepare_tasks: "{{ playbook_dir }}/tasks/recovery/prepare.yml"
+        pbm_restore_verify_tasks: "{{ (playbook_dir + '/tasks/recovery/restore.yml') if restore_manifest | length > 0 else '' }}"
+        pbm_restore_cleanup_tasks: "{{ (playbook_dir + '/tasks/recovery/start_source.yml') if (restore_stop_source | bool and restore_source_touched | bool) else '' }}"
+      ansible.builtin.include_role:
+        name: pbm
+        tasks_from: restore

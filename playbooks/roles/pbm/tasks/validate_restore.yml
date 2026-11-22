@@ -1,0 +1,24 @@
+---
+- name: Require an explicit target, application namespace and UTC point
+  ansible.builtin.assert:
+    that:
+      - pbm_restore_confirm == inventory_hostname
+      - not (pbm_pitr_enabled | bool)
+      - not (pbm_schedule_enabled | bool)
+      - pbm_restore_list_only | bool or pbm_restore_point is match('^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}$')
+      - pbm_restore_list_only | bool or pbm_restore_namespace is match('^[a-zA-Z0-9_-]+[.][a-zA-Z0-9_.*-]+$')
+      - pbm_restore_namespace.split('.')[0] not in ['admin', 'config', 'local']
+    fail_msg: Confirm the destination hostname; disable its backup schedule/PITR and select an application namespace and UTC point.
+
+- name: Check actual destination PBM configuration before any changes
+  ansible.builtin.command: "{{ pbm_home }}/drctl pbm config --list"
+  register: pbm_restore_config
+  changed_when: false
+  failed_when: pbm_restore_config.rc != 0 and 'no documents in result' not in pbm_restore_config.stderr
+  no_log: true
+
+- name: Refuse to restore onto an instance that archives its own oplog
+  ansible.builtin.assert:
+    that: not ((pbm_restore_config.stdout | from_yaml | default({}, true)).get('pitr', {}).get('enabled', false))
+    fail_msg: The destination currently has PITR enabled. Select an isolated destination with PITR and backup scheduling disabled.
+  no_log: true

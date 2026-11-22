@@ -1,0 +1,13 @@
+---
+- name: Prepare an empty managed instance only when explicitly requested
+  ansible.builtin.include_tasks: fresh-recovery.yml
+  when: restore_reinitialize | bool
+
+- name: Record the need to return source services even after a partial stop
+  ansible.builtin.set_fact:
+    restore_source_touched: true
+  when: restore_stop_source | bool
+
+- name: Stop and inspect the source only during an outage exercise
+  ansible.builtin.include_tasks: stop_source.yml
+  when: restore_stop_source | bool

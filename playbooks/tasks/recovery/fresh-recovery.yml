@@ -1,47 +1,57 @@
 ---
-- name: Stop the recovery agent and database
+- name: Check that the MongoDB role owns this instance
+  ansible.builtin.stat:
+    path: "{{ mongodb_home }}/.ansible-mongodb"
+  register: restore_managed_instance
+
+- name: Restrict reset to an explicitly managed MongoDB directory
+  ansible.builtin.assert:
+    that:
+      - restore_managed_instance.stat.exists
+      - mongodb_home is match('^/srv/[^.][a-zA-Z0-9/_-]+$')
+      - inventory_hostname in groups.get('mongodb', [])
+    fail_msg: Reinitialization is only available for an instance prepared by the mongodb role.
+
+- name: Stop target agent and database
   ansible.builtin.systemd_service:
     name: "{{ item }}"
     state: stopped
   loop:
-    - mongo-dr-pbm.service
-    - mongo-dr.service
+    - "{{ pbm_service }}-pbm.service"
+    - "{{ mongodb_service }}.service"
 
-- name: Allocate a unique directory for the previous recovery database
+- name: Allocate a directory for the previous target instance
   ansible.builtin.tempfile:
     state: directory
-    path: "{{ dr_home }}"
-    prefix: data-before-
-  register: dr_previous_data
+    path: "{{ mongodb_home }}"
+    prefix: "{{ restore_previous_prefix }}"
+  register: restore_previous_data
 
-- name: Preserve the previous recovery database
+- name: Preserve the previous database before creating an empty instance
   ansible.builtin.command:
-    argv:
-      - mv
-      - --no-target-directory
-      - "{{ dr_home }}/data"
-      - "{{ dr_previous_data.path }}/data"
+    argv: [mv, --no-target-directory, "{{ mongodb_home }}/data", "{{ restore_previous_data.path }}/data"]
 
-- name: Create an empty recovery database directory
+- name: Create empty data directory
   ansible.builtin.file:
-    path: "{{ dr_home }}/data"
-    owner: mongo-dr
-    group: mongo-dr
+    path: "{{ mongodb_home }}/data"
+    owner: "{{ mongodb_user }}"
+    group: "{{ mongodb_user }}"
     mode: "0700"
     state: directory
 
-- name: Start the clean recovery database
+- name: Start the empty MongoDB instance
   ansible.builtin.systemd_service:
-    name: mongo-dr.service
+    name: "{{ mongodb_service }}"
     state: started
 
-- name: Initialize the clean replica set
-  ansible.builtin.command: "{{ dr_home }}/drctl {{ dr_home }}/bootstrap.py {{ dr_replica }} {{ dr_port }}"
+- name: Initialize the empty replica set
+  ansible.builtin.command:
+    argv: ["{{ mongodb_home }}/bootstrap.py", "{{ mongodb_replica }}", "{{ mongodb_port | string }}", "{{ mongodb_admin_user }}"]
+  environment:
+    MONGODB_URI: "mongodb://{{ mongodb_admin_user | urlencode | replace('/', '%2F') }}:{{ mongodb_admin_password | urlencode | replace('/', '%2F') }}@127.0.0.1:{{ mongodb_port }}/?authSource=admin"
+  no_log: true
 
-- name: Start the recovery agent
+- name: Start target PBM agent
   ansible.builtin.systemd_service:
-    name: mongo-dr-pbm.service
+    name: "{{ pbm_service }}-pbm"
     state: started
-
-- name: Load storage configuration with PITR writes disabled
-  ansible.builtin.command: "{{ dr_home }}/drctl pbm config --file {{ dr_home }}/pbm.yml"

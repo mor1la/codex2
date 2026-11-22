@@ -1,0 +1,38 @@
+---
+- name: Generate current checkpoint for regular drill
+  ansible.builtin.import_playbook: experiment.yml
+  vars:
+    experiment_db: dr_scheduled_check
+    experiment_docs: 4096
+    experiment_payload: 4096
+    experiment_duration: 5
+    experiment_cycles: 1
+    experiment_reset_drill_database: true
+
+- name: Recover and verify on an empty selected MongoDB instance
+  ansible.builtin.import_playbook: restore.yml
+  vars:
+    restore_target: "{{ drill_target }}"
+    restore_confirm: "{{ drill_target }}"
+    restore_archive: "{{ drill_archive }}"
+    restore_manifest: "{{ playbook_dir }}/../artifacts/experiment.json"
+    restore_reinitialize: true
+    restore_previous_prefix: drill-previous-
+
+- name: Bound disk use after a successful automatic drill
+  hosts: "{{ hostvars['localhost'].restore_selected_target | default('restore_target_required') }}"
+  become: true
+  tasks:
+    - name: Find data preserved by automatic drills
+      ansible.builtin.find:
+        paths: "{{ mongodb_home }}"
+        patterns: drill-previous-*
+        file_type: directory
+        recurse: false
+      register: drill_previous
+
+    - name: Keep one previous automatic instance
+      ansible.builtin.file:
+        path: "{{ item.path }}"
+        state: absent
+      loop: "{{ (drill_previous.files | sort(attribute='mtime', reverse=true))[1:] }}"

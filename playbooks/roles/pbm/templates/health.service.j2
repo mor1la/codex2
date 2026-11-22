@@ -1,0 +1,9 @@
+[Unit]
+Description=Collect MongoDB backup health and metrics
+
+[Service]
+Type=oneshot
+User={{ pbm_user }}
+EnvironmentFile={{ pbm_home }}/pbm.env
+ExecStart={{ pbm_home }}/health.py --max-lag {{ pbm_rpo_seconds }} --agent-service {{ pbm_service }}-pbm {{ '--require-pitr' if pbm_pitr_enabled | bool else '' }}
+TimeoutStartSec=90

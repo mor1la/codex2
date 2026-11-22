@@ -1,6 +1,80 @@
 # Подключение к существующему проекту
 
-Эта инструкция для приложения, у которого уже есть MongoDB. `playbooks/site.yml` предназначен для отдельного лабораторного стенда с собственным портом, каталогом данных и replica set. В существующем проекте подключите PBM к текущему replica set через свой Ansible-проект или другой инструмент развёртывания.
+Эта инструкция для приложения, у которого уже есть MongoDB. `playbooks/setup.yml` предназначен для отдельного лабораторного стенда с собственным портом, каталогом данных и replica set. В существующем проекте подключите PBM к текущему replica set через свой Ansible-проект или другой инструмент развёртывания.
+
+## Независимый Ansible-модуль
+
+Полный список параметров и отдельные примеры установки, backup и restore приведены в [README роли `pbm`](../playbooks/roles/pbm/README.md).
+
+Для интеграции скопируйте только `playbooks/roles/pbm` в `playbooks/roles/` своего Ansible-проекта. Роль содержит все свои программы и шаблоны, не разворачивает MongoDB/S3 и не требует нашу внутреннюю сеть, управляющую ВМ или Grafana. Эта же роль содержит отдельные задачи `backup.yml` и `restore.yml`; установка роли не запускает восстановление.
+
+Готовый образец для уже существующего replica set из трёх узлов: [inventory](../examples/backup/hosts.example.yml), [playbook](../examples/backup/playbook.yml). Все три узла должны уже существовать; этот пример не меняет топологию лаборатории.
+
+В образце замените адреса и S3. Значения `vault_pbm_cli_uri`, `vault_pbm_db1_uri`, `vault_pbm_db2_uri`, `vault_pbm_db3_uri`, `vault_s3_access`, `vault_s3_secret` храните в Ansible Vault. CLI URI указывает на replica set, URI каждого агента — на свой локальный `mongod` с `directConnection=true`. Пароль внутри URI кодируется percent-encoding. Роль не создаёт пользователей и не расширяет их права: подготовьте пользователя по документации Percona.
+
+```bash
+# На компьютере с Ansible, из корня этого репозитория: скопировать образец.
+cp examples/backup/hosts.example.yml examples/backup/hosts.yml
+# Создать зашифрованный файл с перечисленными vault_* переменными.
+ansible-vault create examples/backup/secrets.yml
+# Проверить SSH-доступ к уже существующим серверам.
+ansible -i examples/backup/hosts.yml pbm_agents -m ping
+# Настроить только PBM; установить зависимости из Percona APT для Ubuntu 24.04.
+ansible-playbook -i examples/backup/hosts.yml examples/backup/playbook.yml \
+  -e @examples/backup/secrets.yml --ask-vault-pass
+```
+
+`pbm_configure` и `pbm_schedule_enabled` включены только на одном выбранном узле. Агент устанавливается на каждом узле с данными. На другом Linux с systemd заранее установите совместимый PBM, Python-зависимости и задайте `pbm_install_packages: false`. Автоматическая установка пакетов в этой версии роли проверяется на Ubuntu 24.04 amd64.
+
+| Переменная | Назначение / значение по умолчанию |
+|---|---|
+| `pbm_uri`, `pbm_agent_uri` | Обязательные URI CLI и локального агента |
+| `pbm_s3_endpoint`, `pbm_s3_bucket`, `pbm_s3_access`, `pbm_s3_secret` | Обязательные параметры своего хранилища |
+| `pbm_s3_region`, `pbm_s3_prefix` | `msk`, `pbm`; для внешнего S3 регион задаёт провайдер |
+| `pbm_home`, `pbm_service`, `pbm_user` | `/srv/mongodb-backup`, `mongodb` (префикс служб), `mongodb-backup` |
+| `pbm_calendar` | Полная копия ежедневно в 05:15 МСК (02:15 UTC) |
+| `pbm_retention_days` | `7`, очистка PBM после успешной копии |
+| `pbm_pitr_enabled`, `pbm_slice_minutes` | `true`, сегменты примерно по одной минуте |
+| `pbm_metrics_enabled` | `true`: локальные JSON/textfile, Prometheus не обязателен |
+
+После первой установки на выбранном сервере выполните `sudo systemctl start mongodb-backup.service`: это базовый снимок для PITR. Контролируйте `sudo /srv/mongodb-backup/drctl pbm list` до появления диапазона PITR. Для поэтапного ввода можно сначала задать `pbm_pitr_enabled: false`, сделать копию и затем включить PITR повторным запуском Ansible. Если PBM уже работает, перед изменением его хранилища согласуйте миграцию архива.
+
+Для восстановления используется та же роль `pbm` с `tasks_from: restore` и подтверждением выбранного получателя. Создание пустой MongoDB и генератор данных в этот вход роли не входят; пример вызова приведён ниже.
+
+## Операции одной роли
+
+| Вызов | Действие |
+|---|---|
+| Обычное `roles: [pbm]` | Установить и настроить агент, хранилище, расписание и локальные метрики |
+| `include_role: {name: pbm, tasks_from: backup}` | Явно создать полный снимок и применить ротацию |
+| `include_role: {name: pbm, tasks_from: restore}` | Явно восстановить namespace до UTC-точки на выбранном получателе |
+
+Роль принимает прямые параметры S3 и URI, не знает IP стенда, имён групп источника/DR или инфраструктуры мониторинга. Генератор данных не входит в роль. Обе операции требуют заранее настроенного PBM; подготовка MongoDB, S3 и чистого получателя делается отдельно.
+
+Пример вызова восстановления в своём playbook:
+
+```yaml
+- name: Restore selected existing MongoDB
+  hosts: "{{ restore_target }}"
+  become: true
+  tasks:
+    - name: Execute explicit restore
+      ansible.builtin.include_role:
+        name: pbm
+        tasks_from: restore
+      vars:
+        pbm_restore_confirm: "{{ restore_confirm }}"
+        pbm_restore_namespace: "{{ app_namespace }}"
+        pbm_restore_point: "{{ target_utc }}"
+```
+
+На получателе задайте `pbm_pitr_enabled: false`, `pbm_schedule_enabled: false`, его собственные URI агента/CLI и параметры нужного архива. `restore_confirm` должен совпадать с inventory hostname. Время — UTC `YYYY-MM-DDTHH:MM:SS`, namespace — например `myapp.*`. Роль также проверяет фактическое состояние PITR до изменения конфигурации, выбирает переданный архив и дожидается импорта каталога. Исходный replica set ей не нужен.
+
+Вход `restore` автоматически сохраняет результат и метрики на Ansible-контроллере. По умолчанию это `../artifacts/restore-<inventory_hostname>.json` относительно каталога playbook и соседний `.prom`; путь задаётся `pbm_restore_report_path`. Для Telegram подключите этот `.prom` к своему мониторингу и правило `RestoreFailed`, как описано в [инструкции уведомлений](monitoring.md#уведомления-в-telegram). Токен бота роли PBM не нужен.
+
+Если нужна автоматическая прикладная проверка, передайте путь к своему файлу задач в `pbm_restore_verify_tasks`. При несовпадении данных задачи должны завершиться ошибкой: тогда отчёт покажет `restore_success: true`, `verification_status: failed` и `success: false`. Без проверки статус равен `not_requested`; это не подтверждение целостности данных.
+
+Готовый `playbooks/restore.yml` этого проекта дополнительно принимает `restore_target`, `restore_archive`, `restore_database` и `restore_time`. Для него настройте `backup_archives` в inventory: именованные записи с `endpoint`, `region`, `bucket`, `prefix`, `access_key`, `secret_key`. Внешний проект может вызывать роль напрямую, без этого справочника и без playbook лаборатории.
 
 ## 1. Подготовьте MongoDB и S3
 
@@ -10,7 +84,7 @@
 
 ## 2. Сделайте базовый снимок и включите PITR
 
-Возьмите за основу [шаблон PBM](../playbooks/roles/mongo_dr/templates/pbm.yml.j2). В своей системе развёртывания подставьте endpoint, регион, бакет и префикс. Подставьте секреты из менеджера секретов при генерации файла, либо используйте поддерживаемый механизм получения S3-учётных данных из окружения. Ограничьте доступ к сгенерированному файлу. При первой настройке задайте `pitr.enabled: false` и выберите интервал `pitr.oplogSpanMin` по целевому RPO. [Настройки S3 в PBM](https://docs.percona.com/percona-backup-mongodb/2.17.0/reference/configuration-options.html)
+Возьмите за основу [шаблон PBM](../playbooks/roles/pbm/templates/pbm.yml.j2). В своей системе развёртывания подставьте endpoint, регион, бакет и префикс. Подставьте секреты из менеджера секретов при генерации файла, либо используйте поддерживаемый механизм получения S3-учётных данных из окружения. Ограничьте доступ к сгенерированному файлу. При первой настройке задайте `pitr.enabled: false` и выберите интервал `pitr.oplogSpanMin` по целевому RPO. [Настройки S3 в PBM](https://docs.percona.com/percona-backup-mongodb/2.17.0/reference/configuration-options.html)
 
 Следующие команды выполняйте с административного хоста, где установлен CLI `pbm` и загружен URI **исходного replica set**. Если PBM уже используется, сначала проверьте его текущую конфигурацию и согласуйте смену хранилища.
 
@@ -24,7 +98,7 @@ pbm list
 
 `status` проверяет видимость агентов, `config --file` загружает конфигурацию S3, `backup --wait` ждёт окончания базового снимка. Следующая команда включает архивирование изменений. Повторите `pbm list` после первого интервала нарезки и убедитесь, что появился диапазон PITR. Закрепите `pitr.enabled: true` в управляемой конфигурации источника.
 
-Запланируйте регулярный логический снимок и очистку средствами PBM. Пример расписания есть в [роли Ansible](../playbooks/roles/mongo_dr/tasks/schedule.yml). Следите за возрастом доступной точки, свободным местом и локальным окном oplog. Если это окно истечёт во время сбоя выгрузки, понадобится новый базовый снимок.
+Запланируйте регулярный логический снимок и очистку средствами PBM. Пример расписания есть в [роли Ansible](../playbooks/roles/pbm/templates/backup.service.j2). Следите за возрастом доступной точки, свободным местом и локальным окном oplog. Если это окно истечёт во время сбоя выгрузки, понадобится новый базовый снимок.
 
 ## 3. Проверьте восстановление на отдельном экземпляре
 

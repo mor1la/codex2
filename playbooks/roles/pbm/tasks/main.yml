@@ -1,0 +1,88 @@
+---
+- name: Validate explicit connection and storage settings
+  ansible.builtin.assert:
+    that:
+      - pbm_uri | length > 0
+      - pbm_agent_uri | length > 0
+      - pbm_s3_endpoint is match('^https?://')
+      - pbm_s3_bucket | length > 0
+      - pbm_s3_access | length > 0
+      - pbm_s3_secret | length > 0
+      - pbm_retention_days | int >= 2
+      - pbm_slice_minutes | float > 0
+  no_log: true
+
+- name: Install PBM and Python dependencies when requested
+  ansible.builtin.import_tasks: packages.yml
+  when: pbm_install_packages | bool
+
+- name: Create backup service account
+  ansible.builtin.user:
+    name: "{{ pbm_user }}"
+    system: true
+    create_home: false
+    shell: /usr/sbin/nologin
+
+- name: Create backup directories
+  ansible.builtin.file:
+    path: "{{ pbm_home }}{{ item }}"
+    state: directory
+    owner: "{{ pbm_user if item else 'root' }}"
+    group: "{{ pbm_user }}"
+    mode: "0755"
+  loop: ["", /state]
+
+- name: Install connection environments separately for CLI and local agent
+  ansible.builtin.copy:
+    dest: "{{ pbm_home }}/{{ item.file }}"
+    content: "PBM_MONGODB_URI={{ item.uri | to_json }}\n"
+    owner: root
+    group: "{{ pbm_user }}"
+    mode: "0640"
+  loop:
+    - {file: pbm.env, uri: "{{ pbm_uri }}"}
+    - {file: agent.env, uri: "{{ pbm_agent_uri }}"}
+  no_log: true
+  notify: Restart backup agent
+
+- name: Install backup tools
+  ansible.builtin.copy:
+    src: "{{ item }}"
+    dest: "{{ pbm_home }}/{{ item }}"
+    mode: "0755"
+  loop: [drctl, archive_s3.py, backup.py, health.py]
+
+- name: Write desired archive configuration
+  ansible.builtin.import_tasks: storage.yml
+
+- name: Install backup systemd units
+  ansible.builtin.template:
+    src: "{{ item }}.j2"
+    dest: "/etc/systemd/system/{{ pbm_service }}-{{ item }}"
+    mode: "0644"
+  loop: [pbm.service, backup.service, backup.timer, health.service, health.timer]
+  notify: Restart backup agent
+
+- name: Enable backup agent
+  ansible.builtin.systemd_service:
+    name: "{{ pbm_service }}-pbm"
+    state: started
+    enabled: true
+    daemon_reload: true
+
+- name: Apply agent changes
+  ansible.builtin.meta: flush_handlers
+
+- name: Configure replica set backup catalogue from designated host
+  ansible.builtin.import_tasks: configure.yml
+  when: pbm_configure | bool and not ansible_check_mode
+
+- name: Set backup and health schedules
+  ansible.builtin.systemd_service:
+    name: "{{ pbm_service }}-{{ item.name }}.timer"
+    enabled: "{{ item.enabled | bool }}"
+    state: "{{ 'started' if item.enabled | bool else 'stopped' }}"
+    daemon_reload: true
+  loop:
+    - {name: backup, enabled: "{{ pbm_schedule_enabled }}"}
+    - {name: health, enabled: "{{ pbm_metrics_enabled }}"}

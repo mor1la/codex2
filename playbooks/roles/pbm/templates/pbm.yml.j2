@@ -1,0 +1,15 @@
+storage:
+  type: s3
+  s3:
+    endpointUrl: {{ pbm_s3_endpoint | to_json }}
+    region: {{ pbm_s3_region | to_json }}
+    bucket: {{ pbm_s3_bucket | to_json }}
+    prefix: {{ pbm_s3_prefix | to_json }}
+    forcePathStyle: true
+    credentials:
+      access-key-id: {{ pbm_s3_access | to_json }}
+      secret-access-key: {{ pbm_s3_secret | to_json }}
+pitr:
+  enabled: {{ pbm_pitr_enabled | bool | lower }}
+  oplogSpanMin: {{ pbm_slice_minutes }}
+  compression: s2

@@ -1,11 +1,17 @@
 ---
-dr_s3_port: 19000
-dr_s3_endpoint: "http://{{ hostvars[groups.storage[0]].wg_ip }}:{{ dr_s3_port }}"
-dr_s3_bucket: mongo-dr
-dr_s3_prefix: pbm
-dr_s3_region: us-east-1
-dr_s3_root_access: mongo-dr-admin
-dr_s3_access: mongo-dr-pbm
-dr_s3_home: /srv/mongo-dr-s3
-dr_s3_version: v1.11.0
-dr_s3_sha256: 1f075c9dc92fef232f5b3c7465711ddc5e1b062b2b6df4a3bd246a4be5b35b52
+# Endpoint/bucket profiles are independent of a running source MongoDB.
+backup_archives:
+  lab:
+    endpoint: http://10.23.0.10:19000
+    region: msk
+    bucket: mongo-dr
+    prefix: pbm
+    access_key: mongo-dr-pbm
+    secret_key: "{{ dr_s3_secret }}"
+
+# Parameters used only when preparing the optional laboratory S3 service.
+s3_bind_address: 10.23.0.10
+s3_endpoint: "{{ backup_archives.lab.endpoint }}"
+s3_region: "{{ backup_archives.lab.region }}"
+s3_root_secret: "{{ dr_s3_root_secret }}"
+s3_secret: "{{ dr_s3_secret }}"

@@ -1,0 +1,30 @@
+---
+- name: Persist restore result and metrics on the Ansible controller
+  ansible.builtin.command:
+    argv:
+      - "{{ ansible_playbook_python }}"
+      - "{{ role_path }}/files/restore_report.py"
+      - "{{ pbm_restore_report_event }}"
+      - --path
+      - "{{ pbm_restore_report_path }}"
+    stdin: >-
+      {{ {
+        'metadata': pbm_restore_report_metadata,
+        'target': inventory_hostname,
+        'database': pbm_restore_namespace.split('.')[0],
+        'namespace': pbm_restore_namespace,
+        'target_utc': pbm_restore_point,
+        'backend': 's3',
+        'success': pbm_restore_success,
+        'restore_success': pbm_restore_database_success,
+        'failed_stage': pbm_restore_failed_stage,
+        'cleanup_failed': pbm_restore_cleanup_failed,
+        'verification_status': pbm_restore_verification_status,
+        'verification': pbm_restore_verification,
+        'resync_seconds': (pbm_restore_resync | default({})).get('delta'),
+        'restore_seconds': (pbm_restore_result | default({})).get('delta'),
+        'restore_output': (pbm_restore_result | default({})).get('stdout', '') if pbm_restore_database_success else ''
+      } | to_json }}
+  delegate_to: localhost
+  become: false
+  when: not (pbm_restore_list_only | bool) and not ansible_check_mode

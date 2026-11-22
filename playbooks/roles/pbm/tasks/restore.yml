@@ -1,0 +1,52 @@
+---
+- name: Restore with a persistent operation result
+  when: not ansible_check_mode
+  block:
+    - name: Initialize this restore attempt independently of previous results
+      ansible.builtin.set_fact:
+        pbm_restore_stage: validation
+        pbm_restore_success: false
+        pbm_restore_database_success: null
+        pbm_restore_failed_stage: null
+        pbm_restore_cleanup_failed: false
+        pbm_restore_verification: null
+        pbm_restore_verification_status: "{{ 'not_run' if pbm_restore_verify_tasks | length > 0 else 'not_requested' }}"
+        pbm_restore_resync: {}
+        pbm_restore_result: {}
+
+    - name: Record the start before contacting the destination
+      ansible.builtin.include_tasks: restore_report.yml
+      vars:
+        pbm_restore_report_event: start
+
+    - name: Execute and record the selected recovery operation
+      block:
+        - name: Restore and optionally verify data
+          ansible.builtin.include_tasks: restore_execute.yml
+      rescue:
+        - name: Record the failed stage without persisting credentials or raw errors
+          ansible.builtin.set_fact:
+            pbm_restore_failed_stage: "{{ pbm_restore_stage }}"
+            pbm_restore_verification_status: "{{ 'failed' if pbm_restore_stage == 'verification' else pbm_restore_verification_status }}"
+      always:
+        - name: Perform caller cleanup even after a failed operation
+          when: pbm_restore_cleanup_tasks | length > 0 and not (pbm_restore_list_only | bool)
+          block:
+            - name: Execute cleanup tasks
+              ansible.builtin.include_tasks: "{{ pbm_restore_cleanup_tasks }}"
+          rescue:
+            - name: Record cleanup failure without masking an earlier failure
+              ansible.builtin.set_fact:
+                pbm_restore_success: false
+                pbm_restore_cleanup_failed: true
+                pbm_restore_failed_stage: "{{ pbm_restore_failed_stage or 'cleanup' }}"
+
+        - name: Persist the final result independently of monitoring availability
+          ansible.builtin.include_tasks: restore_report.yml
+          vars:
+            pbm_restore_report_event: finish
+
+    - name: Preserve a failed Ansible exit status after writing the result
+      ansible.builtin.fail:
+        msg: "Restore operation failed at stage {{ pbm_restore_failed_stage }}. Check the Ansible output and PBM logs."
+      when: not (pbm_restore_success | bool)

@@ -1,0 +1,12 @@
+---
+mongodb_home: /srv/mongodb
+mongodb_service: mongodb
+mongodb_user: mongodb
+mongodb_uid: null
+mongodb_port: 27017
+mongodb_bind_ip: 127.0.0.1
+mongodb_replica: rs0
+mongodb_admin_user: admin
+mongodb_cache_gb: 0.5
+mongodb_oplog_mb: 2048
+mongodb_package: percona-server-mongodb-server=8.0.38-16.noble

@@ -1,0 +1,40 @@
+---
+- name: Prepare isolated instances for the size comparison
+  hosts: mongodb
+  become: true
+  tasks:
+    - name: Restrict this setup to explicitly selected benchmark instances
+      ansible.builtin.assert:
+        that:
+          - scaling_instance | default(false) | bool
+          - mongodb_home == '/srv/mongo-dr-benchmark'
+          - mongodb_port | int == 27217
+          - mongodb_replica == 'drbench'
+          - mongodb_service == 'mongo-dr-benchmark'
+          - not (pbm_schedule_enabled | bool)
+          - not (pbm_install_packages | bool)
+
+    - name: Check that the existing database server binary is available
+      ansible.builtin.command: /usr/bin/mongod --version
+      register: scaling_mongod
+      changed_when: false
+
+    - name: Check that the existing PBM binary is available
+      ansible.builtin.command: /usr/bin/pbm version
+      register: scaling_pbm
+      changed_when: false
+
+    - name: Require the measured versions without changing installed packages
+      ansible.builtin.assert:
+        that:
+          - "'8.0.38' in scaling_mongod.stdout"
+          - "'2.17.0' in scaling_pbm.stdout"
+
+    - name: Configure a separate database using the existing MongoDB role
+      ansible.builtin.include_role:
+        name: mongodb
+        tasks_from: instance
+
+    - name: Configure a separate backup agent using the existing PBM role
+      ansible.builtin.include_role:
+        name: pbm

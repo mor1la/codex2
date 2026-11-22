@@ -10,11 +10,12 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - run: python -m pip install ansible-core==2.19.4
+      - run: python -m pip install ansible-core==2.19.4 pymongo==4.16.0
       - run: |
           for playbook in playbooks/*.yml; do
             ansible-playbook -i inventory/hosts.example.yml "$playbook" --syntax-check
           done
-          python -m py_compile playbooks/roles/mongo_dr/files/*.py
-          bash -n playbooks/roles/mongo_dr/files/drctl
+          python -m compileall -q playbooks/roles scripts
+          python -m py_compile playbooks/roles/pbm/files/drctl
           bash -n scripts/init-secrets.sh
+          python -m unittest discover -s tests -v

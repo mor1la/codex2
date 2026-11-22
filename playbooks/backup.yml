@@ -1,0 +1,21 @@
+---
+- name: Validate explicit backup target
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  any_errors_fatal: true
+  tasks:
+    - name: Require a known PBM host
+      ansible.builtin.assert:
+        that:
+          - backup_target | default('') in groups.get('pbm_agents', [])
+        fail_msg: Set backup_target to one inventory hostname in pbm_agents.
+
+- name: Create a full snapshot on the selected host
+  hosts: "{{ backup_target | default('backup_target_required') }}"
+  become: true
+  tasks:
+    - name: Run the PBM backup entry point
+      ansible.builtin.include_role:
+        name: pbm
+        tasks_from: backup

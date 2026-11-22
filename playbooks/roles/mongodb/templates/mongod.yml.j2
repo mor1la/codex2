@@ -1,0 +1,15 @@
+storage:
+  dbPath: {{ mongodb_home }}/data
+  wiredTiger:
+    engineConfig:
+      cacheSizeGB: {{ mongodb_cache_gb }}
+net:
+  bindIp: {{ mongodb_bind_ip }}
+  port: {{ mongodb_port }}
+replication:
+  replSetName: {{ mongodb_replica }}
+  oplogSizeMB: {{ mongodb_oplog_mb }}
+security:
+  keyFile: {{ mongodb_home }}/key
+setParameter:
+  enableLocalhostAuthBypass: true

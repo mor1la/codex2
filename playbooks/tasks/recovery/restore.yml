@@ -1,75 +1,25 @@
 ---
-- name: Verify PBM uses the S3 bucket with recovery-side PITR writes disabled
-  ansible.builtin.command: "{{ dr_home }}/drctl pbm config --list"
-  register: dr_recovery_config
-  changed_when: false
-  failed_when: >-
-    dr_recovery_config.rc != 0 or
-    (dr_recovery_config.stdout | from_yaml).storage.type != 's3' or
-    (dr_recovery_config.stdout | from_yaml).storage.s3.bucket != dr_s3_bucket or
-    ((dr_recovery_config.stdout | from_yaml).pitr.enabled | default(false))
-  no_log: true
-
-- name: Import snapshot and oplog metadata from storage
-  ansible.builtin.command: "{{ dr_home }}/drctl pbm config --force-resync --wait"
-  register: dr_resync
-
-- name: List available snapshots and PITR ranges
-  when: recovery_list_only | bool
+- name: Verify the recorded experimental checkpoint
+  when: restore_manifest | length > 0
   block:
-    - name: Read recovery catalog
-      ansible.builtin.command: "{{ dr_home }}/drctl pbm list"
-      register: dr_recovery_catalog
-      changed_when: false
-
-    - name: Show recovery catalog
-      ansible.builtin.debug:
-        var: dr_recovery_catalog.stdout_lines
-
-- name: Restore selected point
-  ansible.builtin.command:
-    argv:
-      - "{{ dr_home }}/drctl"
-      - pbm
-      - restore
-      - --yes
-      - --wait
-      - --ns
-      - "{{ (recovery_database if recovery_point else dr_manifest.database) + '.*' }}"
-      - --time
-      - "{{ recovery_point or (dr_manifest.cycles | last).target_utc }}"
-  register: dr_restore
-  when: not (recovery_list_only | bool)
-  async: 14400
-  poll: 5
-
-- name: Validate experimental dataset
-  when: recovery_point | length == 0 and not (recovery_list_only | bool)
-  block:
-    - name: Install expected state on recovery host
+    - name: Install the verification program independently of the MongoDB role
       ansible.builtin.copy:
-        src: "{{ recovery_manifest }}"
-        dest: "{{ dr_home }}/expected.json"
+        src: "{{ playbook_dir }}/../scripts/experiment.py"
+        dest: "{{ pbm_home }}/experiment.py"
+        mode: "0755"
+
+    - name: Install expected state on the destination
+      ansible.builtin.copy:
+        src: "{{ restore_manifest }}"
+        dest: "{{ pbm_home }}/expected.json"
         mode: "0600"
 
-    - name: Check document digest, indexes and MongoDB validation
-      ansible.builtin.command: "{{ dr_home }}/drctl {{ dr_home }}/experiment.py verify --report {{ dr_home }}/expected.json"
-      register: dr_verify
+    - name: Compare documents, SHA-256, indexes and collection validation
+      ansible.builtin.command: "{{ pbm_home }}/drctl {{ pbm_home }}/experiment.py verify --report {{ pbm_home }}/expected.json"
+      register: restore_verification
       changed_when: false
 
-    - name: Write verification and timings to controller
-      ansible.builtin.copy:
-        dest: "{{ playbook_dir }}/../artifacts/recovery-s3.json"
-        mode: "0644"
-        content: |
-          {{ {
-            'source_stopped_for_drill': recovery_stop_source | bool,
-            'source_outage_utc': dr_outage.stdout | default(none),
-            'backend': 's3',
-            'resync_seconds': dr_resync.delta,
-            'restore_seconds': dr_restore.delta,
-            'restore_output': dr_restore.stdout,
-            'verification': dr_verify.stdout | from_json
-          } | to_nice_json }}
-      delegate_to: localhost
-      become: false
+- name: Attach successful verification details to the shared restore report
+  ansible.builtin.set_fact:
+    pbm_restore_verification: "{{ restore_verification.stdout | from_json }}"
+  when: restore_manifest | length > 0

@@ -1,13 +1,13 @@
 [Unit]
 Description=MongoDB DR S3 storage
-Requires=wg-quick@wg0.service
-After=wg-quick@wg0.service
+Wants=network-online.target
+After=network-online.target
 
 [Service]
 User=mongo-dr-s3
 Group=mongo-dr-s3
 EnvironmentFile=/etc/mongo-dr-s3.env
-ExecStart=/opt/mongo-dr-s3/{{ dr_s3_version }}/versitygw --port {{ wg_ip }}:{{ dr_s3_port }} --iam-dir {{ dr_s3_home }}/iam posix {{ dr_s3_home }}/objects
+ExecStart=/opt/mongo-dr-s3/{{ s3_version }}/versitygw --port {{ s3_bind_address }}:{{ s3_port }} --region {{ s3_region }} --iam-dir {{ s3_home }}/iam posix {{ s3_home }}/objects
 Restart=on-failure
 RestartSec=3
 UMask=0077

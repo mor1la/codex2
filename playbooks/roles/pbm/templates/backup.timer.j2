@@ -1,0 +1,10 @@
+[Unit]
+Description=Scheduled logical MongoDB backup
+
+[Timer]
+OnCalendar={{ pbm_calendar }}
+Persistent=true
+Unit={{ pbm_service }}-backup.service
+
+[Install]
+WantedBy=timers.target

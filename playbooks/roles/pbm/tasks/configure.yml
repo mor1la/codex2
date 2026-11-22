@@ -1,0 +1,27 @@
+---
+- name: Read current PBM configuration
+  ansible.builtin.command: "{{ pbm_home }}/drctl pbm config --list"
+  register: pbm_current_output
+  changed_when: false
+  failed_when: pbm_current_output.rc != 0 and 'no documents in result' not in pbm_current_output.stderr
+  no_log: true
+
+- name: Compare managed PBM settings without printing credentials
+  ansible.builtin.set_fact:
+    pbm_expected: "{{ lookup('ansible.builtin.template', 'pbm.yml.j2') | from_yaml }}"
+    pbm_current: "{{ pbm_current_output.stdout | from_yaml | default({}, true) }}"
+  no_log: true
+
+- name: Apply changed storage and PITR settings
+  ansible.builtin.command: "{{ pbm_home }}/drctl pbm config --file {{ pbm_home }}/pbm.yml"
+  when: >-
+    pbm_file.changed or pbm_current.get('storage', {}).get('type') != 's3'
+    or (pbm_expected.storage.s3 | dict2items | rejectattr('key', 'equalto', 'credentials') | list | difference(
+          pbm_current.get('storage', {}).get('s3', {}) | dict2items) | length > 0)
+    or pbm_current.get('pitr', {}).get('enabled', false) != pbm_pitr_enabled | bool
+    or pbm_current.get('pitr', {}).get('oplogSpanMin', 0) | float != pbm_slice_minutes | float
+  no_log: true
+
+- name: Check authenticated access to the backup prefix
+  ansible.builtin.command: "{{ pbm_home }}/drctl {{ pbm_home }}/archive_s3.py"
+  changed_when: false

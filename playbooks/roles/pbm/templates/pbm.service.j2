@@ -1,0 +1,15 @@
+[Unit]
+Description=Percona Backup for MongoDB agent
+{% if pbm_database_service %}
+After={{ pbm_database_service }}.service
+{% endif %}
+
+[Service]
+User={{ pbm_user }}
+EnvironmentFile={{ pbm_home }}/agent.env
+ExecStart=/usr/bin/pbm-agent
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

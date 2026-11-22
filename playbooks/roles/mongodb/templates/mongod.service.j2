@@ -1,0 +1,11 @@
+[Unit]
+Description=Managed MongoDB instance
+
+[Service]
+User={{ mongodb_user }}
+ExecStart=/usr/bin/mongod --config {{ mongodb_home }}/mongod.yml
+Restart=on-failure
+LimitNOFILE=64000
+
+[Install]
+WantedBy=multi-user.target

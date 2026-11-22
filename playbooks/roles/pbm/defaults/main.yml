@@ -1,0 +1,26 @@
+---
+pbm_home: /srv/mongodb-backup
+pbm_user: mongodb-backup
+pbm_service: mongodb
+pbm_install_packages: true
+pbm_package: percona-backup-mongodb=2.17.0-1.noble
+pbm_configure: true
+pbm_schedule_enabled: true
+pbm_calendar: "*-*-* 02:15:00 UTC"
+pbm_retention_days: 7
+pbm_pitr_enabled: true
+pbm_slice_minutes: 1
+pbm_s3_region: msk
+pbm_s3_prefix: pbm
+pbm_database_service: ""
+pbm_metrics_enabled: true
+pbm_rpo_seconds: 180
+pbm_restore_confirm: ""
+pbm_restore_point: ""
+pbm_restore_namespace: ""
+pbm_restore_list_only: false
+pbm_restore_report_path: "{{ playbook_dir }}/../artifacts/restore-{{ inventory_hostname }}.json"
+pbm_restore_report_metadata: {}
+pbm_restore_prepare_tasks: ""
+pbm_restore_verify_tasks: ""
+pbm_restore_cleanup_tasks: ""

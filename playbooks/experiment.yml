@@ -1,7 +1,22 @@
 ---
+- name: Select one experiment host on the controller
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  any_errors_fatal: true
+  tasks:
+    - name: Require an explicitly configured experiment host
+      ansible.builtin.assert:
+        that: experiment_host | default('') in groups.get('pbm_agents', [])
+        fail_msg: Set experiment_host to one PBM inventory hostname.
+    - name: Resolve experiment host
+      ansible.builtin.set_fact:
+        experiment_selected_host: "{{ experiment_host }}"
+
 - name: Create seed snapshot and archive multiple change windows
-  hosts: source
+  hosts: "{{ hostvars['localhost'].experiment_selected_host | default('experiment_host_required') }}"
   become: true
+  any_errors_fatal: true
   vars:
     experiment_db: dr_demo
     experiment_docs: 100000
@@ -11,10 +26,31 @@
     experiment_duration: 15
     experiment_cycles: 2
     experiment_weights: [25, 60, 15]
+    experiment_reset_drill_database: false
+    experiment_reset_benchmark_database: false
+    experiment_target_gib: 0
+    experiment_report_path: "{{ playbook_dir }}/../artifacts/experiment.json"
   tasks:
+    - name: Require active PITR for the change-archive experiment
+      ansible.builtin.assert:
+        that: pbm_pitr_enabled | default(true) | bool
+
+    - name: Install the standalone experiment program
+      ansible.builtin.copy:
+        src: "{{ playbook_dir }}/../scripts/experiment.py"
+        dest: "{{ pbm_home }}/experiment.py"
+        mode: "0755"
+
+    - name: Read the current snapshot timer state
+      ansible.builtin.command: "systemctl is-active {{ pbm_service }}-backup.timer"
+      register: experiment_timer_before
+      changed_when: false
+      failed_when: experiment_timer_before.rc not in [0, 3]
+      when: not ansible_check_mode
+
     - name: Open experimental backup window
       ansible.builtin.systemd_service:
-        name: mongo-dr-backup.timer
+        name: "{{ pbm_service }}-backup.timer"
         state: stopped
       when: not ansible_check_mode
 
@@ -23,7 +59,7 @@
       block:
         - name: Wait for an already running scheduled snapshot
           ansible.builtin.command:
-            argv: [systemctl, show, -p, ActiveState, --value, mongo-dr-backup.service]
+            argv: [systemctl, show, -p, ActiveState, --value, "{{ pbm_service }}-backup.service"]
           register: dr_scheduled_backup
           until: dr_scheduled_backup.stdout not in ['active', 'activating', 'deactivating']
           retries: 60
@@ -33,24 +69,36 @@
         - name: Generate synthetic dataset and capture PITR checkpoints
           ansible.builtin.command:
             argv: >-
-              {{ [dr_home + '/drctl', dr_home + '/experiment.py', 'run',
+              {{ [pbm_home + '/drctl', pbm_home + '/experiment.py', 'run',
                   '--database', experiment_db,
                   '--docs', experiment_docs | string, '--seed', experiment_seed | string,
                   '--payload', experiment_payload | string, '--rate', experiment_rate | string,
                   '--duration', experiment_duration | string, '--cycles', experiment_cycles | string,
-                  '--coverage-timeout', (dr_slice_minutes | int * 180 + 60) | string,
-                  '--report', dr_home + '/experiment-s3.json', '--weights']
-                 + (experiment_weights | map('string') | list) }}
+                  '--target-gib', experiment_target_gib | string,
+                  '--coverage-timeout', ((pbm_slice_minutes | default(1) | float * 180 + 60) | int) | string,
+                  '--report', pbm_home + '/experiment.json', '--weights']
+                 + (experiment_weights | map('string') | list)
+                 + (['--reset-drill-database'] if experiment_reset_drill_database | bool else [])
+                 + (['--reset-benchmark-database'] if experiment_reset_benchmark_database | bool else []) }}
           async: 14400
           poll: 10
 
+        - name: Create controller artifact directory
+          ansible.builtin.file:
+            path: "{{ experiment_report_path | dirname }}"
+            state: directory
+            mode: "0755"
+          delegate_to: localhost
+          become: false
+
         - name: Download experiment manifest
           ansible.builtin.fetch:
-            src: "{{ dr_home }}/experiment-s3.json"
-            dest: "{{ playbook_dir }}/../artifacts/experiment-s3.json"
+            src: "{{ pbm_home }}/experiment.json"
+            dest: "{{ experiment_report_path }}"
             flat: true
       always:
         - name: Resume snapshot schedule
           ansible.builtin.systemd_service:
-            name: mongo-dr-backup.timer
+            name: "{{ pbm_service }}-backup.timer"
             state: started
+          when: experiment_timer_before.stdout == 'active'

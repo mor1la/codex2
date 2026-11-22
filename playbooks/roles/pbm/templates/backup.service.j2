@@ -1,0 +1,10 @@
+[Unit]
+Description=Logical MongoDB backup and retention
+After={{ pbm_service }}-pbm.service
+
+[Service]
+Type=oneshot
+User={{ pbm_user }}
+EnvironmentFile={{ pbm_home }}/pbm.env
+ExecStart={{ pbm_home }}/backup.py --retention-days {{ pbm_retention_days }}
+TimeoutStartSec=4h

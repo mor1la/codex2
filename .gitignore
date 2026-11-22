@@ -1,7 +1,16 @@
 /inventory/hosts.yml
+/inventory/benchmark.yml
 /inventory/group_vars/all/secrets.yml
+/inventory/group_vars/all/controller-access.yml
+/inventory/group_vars/all/zz-runtime.yml
 /artifacts/
 /setup-wireguard.sh
 /ansible-example/
 /task.md
 __pycache__/
+
+/examples/
+/results/
+/docs/
+
+/.github/

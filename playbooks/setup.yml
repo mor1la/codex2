@@ -1,0 +1,22 @@
+---
+- name: Prepare optional laboratory object storage
+  hosts: storage
+  become: true
+  gather_facts: "{{ prepare_storage | default(true) | bool }}"
+  roles:
+    - role: s3_storage
+      when: prepare_storage | default(true) | bool
+
+- name: Prepare ordinary independent MongoDB instances
+  hosts: mongodb
+  become: true
+  gather_facts: "{{ prepare_mongodb | default(true) | bool }}"
+  roles:
+    - role: mongodb
+      when: prepare_mongodb | default(true) | bool
+
+- name: Configure PBM on existing MongoDB instances
+  hosts: pbm_agents
+  become: true
+  roles:
+    - pbm

@@ -1,0 +1,11 @@
+---
+- name: Return source services after the outage exercise
+  ansible.builtin.systemd_service:
+    name: "{{ item }}"
+    state: started
+  loop:
+    - "{{ hostvars[restore_source].mongodb_service }}.service"
+    - "{{ hostvars[restore_source].pbm_service }}-pbm.service"
+    - "{{ hostvars[restore_source].pbm_service }}-backup.timer"
+  delegate_to: "{{ restore_source }}"
+  when: restore_stop_source | bool

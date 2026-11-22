@@ -1,0 +1,112 @@
+groups:
+  - name: mongodb-dr
+    rules:
+      - alert: HostMetricsUnavailable
+        expr: up{job="node"} == 0
+        for: 2m
+        labels: {severity: critical}
+        annotations:
+          summary: Метрики ВМ недоступны
+          description: Проверьте ВМ, WireGuard и службу prometheus-node-exporter.
+      - alert: MongoDBUnavailable
+        expr: mongo_dr_mongodb_up{role="source"} == 0
+        for: 1m
+        labels: {severity: critical}
+        annotations:
+          summary: Исходная MongoDB недоступна или отклоняет аутентификацию
+          description: Проверьте mongo-dr.service и подключение PBM к базе.
+      - alert: PBMAgentUnavailable
+        expr: mongo_dr_pbm_agent_up{role="source"} == 0 or mongo_dr_pbm_cluster_healthy{role="source"} == 0
+        for: 2m
+        labels: {severity: critical}
+        annotations:
+          summary: Агент PBM недоступен
+          description: Проверьте mongo-dr-pbm.service и pbm status.
+      - alert: BackupCollectorFailed
+        expr: mongo_dr_collector_success{role="source"} == 0
+        for: 2m
+        labels: {severity: warning}
+        annotations:
+          summary: Не удалось проверить состояние резервных копий
+          description: Проверьте journalctl -u mongo-dr-health и доступ MongoDB/S3.
+      - alert: BackupCollectorStale
+        expr: (time() - mongo_dr_collector_timestamp_seconds > 180) or (up{job="node",role=~"source|recovery"} == 1 unless on(host) mongo_dr_collector_timestamp_seconds)
+        for: 2m
+        labels: {severity: warning}
+        annotations:
+          summary: Метрики PBM перестали обновляться или отсутствуют
+          description: Проверьте mongo-dr-health.timer и файл metrics.prom.
+      - alert: S3Unavailable
+        expr: probe_success{job="s3-probe"} == 0 or mongo_dr_s3_up{role="source"} == 0
+        for: 2m
+        labels: {severity: critical}
+        annotations:
+          summary: S3 недоступен или отклоняет учётную запись PBM
+          description: Проверьте gateway на .247, туннель и права на бакет.
+      - alert: BackupFailed
+        expr: mongo_dr_backup_success{role="source"} == 0 or mongo_dr_catalog_backup_success{role="source"} == 0
+        labels: {severity: critical}
+        annotations:
+          summary: Резервное копирование или очистка завершились ошибкой
+          description: Проверьте journalctl -u mongo-dr-backup и pbm logs.
+      - alert: FullBackupTooOld
+        expr: time() - mongo_dr_latest_full_timestamp_seconds{role="source"} > 93600
+        for: 5m
+        labels: {severity: critical}
+        annotations:
+          summary: Нет свежей полной резервной копии
+          description: При ежедневном расписании возраст копии превысил 26 часов.
+      - alert: BackupStuck
+        expr: (mongo_dr_backup_running{role="source"} == 1) and (time() - mongo_dr_backup_started_timestamp_seconds{role="source"} > 14400)
+        for: 5m
+        labels: {severity: critical}
+        annotations:
+          summary: Бэкап не завершился за четыре часа
+          description: Проверьте состояние mongo-dr-backup.service, pbm status и журнал операции.
+      - alert: PITRBehind
+        expr: time() - mongo_dr_latest_restore_point_timestamp_seconds{role="source"} > 180
+        for: 1m
+        labels: {severity: critical}
+        annotations:
+          summary: Последняя доступная точка PITR отстаёт от целевого RPO
+          description: Проверьте pbm list, pbm logs и доступ к S3. При разрыве цепочки нужна новая полная копия.
+      - alert: PITRDisabled
+        expr: mongo_dr_pitr_enabled{role="source"} == 0
+        for: 2m
+        labels: {severity: critical}
+        annotations:
+          summary: Архивирование oplog выключено на источнике
+          description: Проверьте pitr.enabled в управляемой конфигурации PBM.
+      - alert: DiskSpaceLow
+        expr: 100 * node_filesystem_avail_bytes{mountpoint="/",fstype!~"tmpfs|overlay"} / node_filesystem_size_bytes{mountpoint="/",fstype!~"tmpfs|overlay"} < 20
+        for: 5m
+        labels: {severity: warning}
+        annotations:
+          summary: На системном диске осталось менее 20 процентов
+          description: Проверьте рост MongoDB, S3, журналов и тестовых данных.
+      - alert: RestoreFailed
+        expr: mongo_dr_restore_success == 0
+        labels: {severity: critical}
+        annotations:
+          summary: Восстановление или проверка данных завершились ошибкой
+          description: Проверьте поле failed_stage в отчёте восстановления на Ansible-контроллере и вывод Ansible.
+      - alert: RestoreStuck
+        expr: (mongo_dr_restore_running == 1) and (time() - mongo_dr_restore_last_attempt_timestamp_seconds > 15000)
+        for: 1m
+        labels: {severity: critical}
+        annotations:
+          summary: Восстановление не записало итоговый результат за 4 часа 10 минут
+          description: Проверьте Ansible, SSH и PBM; не запускайте повторное восстановление до выяснения состояния предыдущего.
+      - alert: RestoreDrillFailed
+        expr: mongo_dr_drill_success == 0
+        labels: {severity: critical}
+        annotations:
+          summary: Проверка восстановления завершилась ошибкой
+          description: На управляющей ВМ проверьте journalctl -u mongo-dr-drill и artifacts/drill.log.
+      - alert: RestoreDrillTooOld
+        expr: time() - mongo_dr_drill_last_success_timestamp_seconds > 691200 or (up{job="node",role="management"} == 1 unless on(host) mongo_dr_drill_last_success_timestamp_seconds)
+        for: 15m
+        labels: {severity: warning}
+        annotations:
+          summary: Нет успешной регулярной проверки восстановления
+          description: Проверьте mongo-dr-drill.timer на управляющей ВМ.

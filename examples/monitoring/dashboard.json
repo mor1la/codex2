@@ -1,0 +1,457 @@
+{
+  "uid": "mongodb-dr",
+  "title": "MongoDB backup and recovery",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "30s",
+  "time": {
+    "from": "now-24h",
+    "to": "now"
+  },
+  "panels": [
+    {
+      "id": 1,
+      "title": "MongoDB source",
+      "type": "stat",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "mongo-dr-prometheus"
+      },
+      "targets": [
+        {
+          "expr": "mongo_dr_mongodb_up{role=\"source\"}",
+          "refId": "A",
+          "legendFormat": "{{host}}"
+        }
+      ],
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 8,
+        "h": 7
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none"
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        }
+      }
+    },
+    {
+      "id": 2,
+      "title": "S3 authenticated access",
+      "type": "stat",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "mongo-dr-prometheus"
+      },
+      "targets": [
+        {
+          "expr": "mongo_dr_s3_up{role=\"source\"}",
+          "refId": "A",
+          "legendFormat": "{{host}}"
+        }
+      ],
+      "gridPos": {
+        "x": 8,
+        "y": 0,
+        "w": 8,
+        "h": 7
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none"
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        }
+      }
+    },
+    {
+      "id": 3,
+      "title": "PITR age",
+      "type": "stat",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "mongo-dr-prometheus"
+      },
+      "targets": [
+        {
+          "expr": "time() - mongo_dr_latest_restore_point_timestamp_seconds{role=\"source\"}",
+          "refId": "A",
+          "legendFormat": "{{host}}"
+        }
+      ],
+      "gridPos": {
+        "x": 16,
+        "y": 0,
+        "w": 8,
+        "h": 7
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s"
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        }
+      }
+    },
+    {
+      "id": 4,
+      "title": "Full backup age",
+      "type": "stat",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "mongo-dr-prometheus"
+      },
+      "targets": [
+        {
+          "expr": "time() - mongo_dr_latest_full_timestamp_seconds{role=\"source\"}",
+          "refId": "A",
+          "legendFormat": "{{host}}"
+        }
+      ],
+      "gridPos": {
+        "x": 0,
+        "y": 7,
+        "w": 8,
+        "h": 7
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s"
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        }
+      }
+    },
+    {
+      "id": 5,
+      "title": "Restore drill success",
+      "type": "stat",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "mongo-dr-prometheus"
+      },
+      "targets": [
+        {
+          "expr": "mongo_dr_drill_success",
+          "refId": "A",
+          "legendFormat": "{{host}}"
+        }
+      ],
+      "gridPos": {
+        "x": 8,
+        "y": 7,
+        "w": 8,
+        "h": 7
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none"
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        }
+      }
+    },
+    {
+      "id": 6,
+      "title": "Restore drill age",
+      "type": "stat",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "mongo-dr-prometheus"
+      },
+      "targets": [
+        {
+          "expr": "time() - mongo_dr_drill_last_success_timestamp_seconds",
+          "refId": "A",
+          "legendFormat": "{{host}}"
+        }
+      ],
+      "gridPos": {
+        "x": 16,
+        "y": 7,
+        "w": 8,
+        "h": 7
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s"
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        }
+      }
+    },
+    {
+      "id": 7,
+      "title": "Backup duration",
+      "type": "timeseries",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "mongo-dr-prometheus"
+      },
+      "targets": [
+        {
+          "expr": "mongo_dr_last_full_duration_seconds{role=\"source\"}",
+          "refId": "A",
+          "legendFormat": "{{host}}"
+        }
+      ],
+      "gridPos": {
+        "x": 0,
+        "y": 14,
+        "w": 8,
+        "h": 7
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s"
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        }
+      }
+    },
+    {
+      "id": 8,
+      "title": "Archive volume (PBM metadata)",
+      "type": "timeseries",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "mongo-dr-prometheus"
+      },
+      "targets": [
+        {
+          "expr": "mongo_dr_archive_bytes{role=\"source\"}",
+          "refId": "A",
+          "legendFormat": "{{host}}"
+        }
+      ],
+      "gridPos": {
+        "x": 8,
+        "y": 14,
+        "w": 8,
+        "h": 7
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "bytes"
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        }
+      }
+    },
+    {
+      "id": 9,
+      "title": "Restore drill duration",
+      "type": "timeseries",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "mongo-dr-prometheus"
+      },
+      "targets": [
+        {
+          "expr": "mongo_dr_drill_duration_seconds",
+          "refId": "A",
+          "legendFormat": "{{host}}"
+        }
+      ],
+      "gridPos": {
+        "x": 16,
+        "y": 14,
+        "w": 8,
+        "h": 7
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s"
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        }
+      }
+    },
+    {
+      "id": 10,
+      "title": "Disk available",
+      "type": "timeseries",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "mongo-dr-prometheus"
+      },
+      "targets": [
+        {
+          "expr": "node_filesystem_avail_bytes{mountpoint=\"/\",fstype!~\"tmpfs|overlay\"}",
+          "refId": "A",
+          "legendFormat": "{{host}}"
+        }
+      ],
+      "gridPos": {
+        "x": 0,
+        "y": 21,
+        "w": 8,
+        "h": 7
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "bytes"
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        }
+      }
+    },
+    {
+      "id": 11,
+      "title": "Memory available",
+      "type": "timeseries",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "mongo-dr-prometheus"
+      },
+      "targets": [
+        {
+          "expr": "node_memory_MemAvailable_bytes",
+          "refId": "A",
+          "legendFormat": "{{host}}"
+        }
+      ],
+      "gridPos": {
+        "x": 8,
+        "y": 21,
+        "w": 8,
+        "h": 7
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "bytes"
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        }
+      }
+    },
+    {
+      "id": 12,
+      "title": "CPU busy",
+      "type": "timeseries",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "mongo-dr-prometheus"
+      },
+      "targets": [
+        {
+          "expr": "100 * (1 - avg by(host) (rate(node_cpu_seconds_total{mode=\"idle\"}[5m])))",
+          "refId": "A",
+          "legendFormat": "{{host}}"
+        }
+      ],
+      "gridPos": {
+        "x": 16,
+        "y": 21,
+        "w": 8,
+        "h": 7
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent"
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        }
+      }
+    }
+  ]
+}

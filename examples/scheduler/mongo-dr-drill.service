@@ -1,0 +1,11 @@
+[Unit]
+Description=Restore and verify a MongoDB backup
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/mongo-dr-lab
+ExecStart=/usr/bin/python3 /opt/mongo-dr-lab/scripts/run-drill.py
+TimeoutStartSec=6h
+UMask=0077

@@ -1,0 +1,9 @@
+---
+backup_archives:
+  scaling:
+    endpoint: http://10.23.0.10:19000
+    region: msk
+    bucket: mongo-dr
+    prefix: scaling/your-unique-run
+    access_key: mongo-dr-pbm
+    secret_key: "{{ dr_s3_secret }}"

@@ -1,0 +1,10 @@
+[Unit]
+Description=Weekly MongoDB restore verification
+
+[Timer]
+OnCalendar=Sun *-*-* 03:30:00 UTC
+Persistent=true
+Unit=mongo-dr-drill.service
+
+[Install]
+WantedBy=timers.target

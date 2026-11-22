@@ -1,0 +1,6 @@
+---
+- name: Add backups to an existing MongoDB replica set
+  hosts: pbm_agents
+  become: true
+  roles:
+    - pbm

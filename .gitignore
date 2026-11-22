@@ -9,7 +9,8 @@
 /task.md
 __pycache__/
 
-/examples/
+/examples/backup/hosts.yml
+/examples/backup/secrets.yml
 /results/
 /docs/
 

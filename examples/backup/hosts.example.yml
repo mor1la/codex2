@@ -1,0 +1,29 @@
+---
+all:
+  vars:
+    ansible_user: ubuntu
+  children:
+    pbm_agents:
+      vars:
+        pbm_package: percona-backup-mongodb=2.17.0-1.noble
+        pbm_uri: "{{ vault_pbm_cli_uri }}"
+        pbm_s3_endpoint: https://s3.example.org
+        pbm_s3_bucket: myapp-backups
+        pbm_s3_prefix: production
+        pbm_s3_access: "{{ vault_s3_access }}"
+        pbm_s3_secret: "{{ vault_s3_secret }}"
+        # One designated host configures PBM and schedules replica set backups.
+        pbm_configure: false
+        pbm_schedule_enabled: false
+      hosts:
+        db1:
+          ansible_host: 192.0.2.21
+          pbm_agent_uri: "{{ vault_pbm_db1_uri }}"
+          pbm_configure: true
+          pbm_schedule_enabled: true
+        db2:
+          ansible_host: 192.0.2.22
+          pbm_agent_uri: "{{ vault_pbm_db2_uri }}"
+        db3:
+          ansible_host: 192.0.2.23
+          pbm_agent_uri: "{{ vault_pbm_db3_uri }}"
